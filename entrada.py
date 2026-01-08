@@ -7,19 +7,20 @@ Original file is located at
     https://colab.research.google.com/drive/11KD1ncGLRkttekYMq-ZwU_1SDS08aZ_c
 """
 
-# =====================================================
-# HOOKE MODEL – SCREENER DE ENTRY PRÓXIMO (STREAMLIT)
-# =====================================================
+# -----------------------------------------------------
+# MODELO HOOKE TRADING – SCREENER DE ENTRY
+# -----------------------------------------------------
 
 import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 
 # -----------------------------------------------------
 # CONFIGURACIÓN
 # -----------------------------------------------------
-st.set_page_config(page_title="Hooke Entry Proximity Screener", layout="wide")
+st.set_page_config(page_title="Hooke Trading Screener", layout="wide")
 
 TICKERS = [
     "BTC-USD", "GAPB.MX", "PLTR", "SPY", "GRUMAB.MX",
@@ -28,73 +29,130 @@ TICKERS = [
     "QUBT", "FRES.MX", "JPM", "MCHI", "INDA"
 ]
 
-st.title("🔮 Acciones Próximas al Signal de Entry (Modelo Hooke)")
+st.title("📈 Modelo del Resorte de Hooke aplicado al Trading")
+st.caption("Screener de proximidad al signal de entry")
 
 # -----------------------------------------------------
-# FUNCIÓN DE ANÁLISIS
+# PARÁMETROS
 # -----------------------------------------------------
-@st.cache_data(show_spinner=False)
-def entry_proximity(ticker):
-    try:
-        df = yf.download(ticker, period="2y", interval="1d", progress=False)
-        if df.empty:
-            return None
+k = 0.001
+window_ma = 10
+elasticidad = 1.5
 
-        # Medias móviles
-        df["MA5"] = df["Close"].rolling(5).mean()
-        df["MA10"] = df["Close"].rolling(10).mean()
-        df.dropna(inplace=True)
+# -----------------------------------------------------
+# FUNCIÓN PRINCIPAL
+# -----------------------------------------------------
+def analizar_ticker(ticker):
+    df = yf.download(ticker, period="2y", interval="1d", progress=False)
 
-        # Condición de tendencia
-        trend_ok = df["MA5"].iloc[-1] < df["MA10"].iloc[-1]
-
-        # Modelo Hooke
-        df["x"] = df["Close"] - df["MA10"]
-        threshold = df["x"].std() * 1.5
-
-        x_last = df["x"].iloc[-1]
-        dist_to_entry = abs(abs(x_last) - threshold)
-
-        return {
-            "Ticker": ticker,
-            "Precio actual": round(df["Close"].iloc[-1], 2),
-            "|x| actual": round(abs(x_last), 4),
-            "Umbral": round(threshold, 4),
-            "Distancia al Entry": round(dist_to_entry, 4),
-            "Tendencia OK": trend_ok
-        }
-
-    except Exception:
+    if df.empty or len(df) < window_ma + 5:
         return None
 
+    df["MA5"] = df["Close"].rolling(5).mean()
+    df["MA10"] = df["Close"].rolling(window_ma).mean()
+    df.dropna(inplace=True)
+
+    # Señales
+    df["Signal"] = np.where(df["MA5"] > df["MA10"], 1, 0)
+
+    # Hooke
+    df["x"] = df["Close"] - df["MA10"]
+    threshold = df["x"].std() * elasticidad
+
+    x_actual = abs(df["x"].iloc[-1])
+    distancia_entry = abs(threshold - x_actual)
+
+    # Tendencia válida (pre–entry)
+    tendencia_ok = df["MA5"].iloc[-1] < df["MA10"].iloc[-1]
+
+    return {
+        "Ticker": ticker,
+        "Precio actual": df["Close"].iloc[-1],
+        "|x| actual": x_actual,
+        "Umbral": threshold,
+        "Distancia al Entry": distancia_entry,
+        "Tendencia OK": tendencia_ok
+    }
+
 # -----------------------------------------------------
-# EJECUCIÓN DEL SCREENER
+# PROCESAR TODOS LOS TICKERS
 # -----------------------------------------------------
-st.subheader("📊 Ranking de proximidad al Entry")
+st.info("🔄 Analizando activos...")
 
-results = []
+resultados = []
 
-with st.spinner("Evaluando activos..."):
-    for t in TICKERS:
-        r = entry_proximity(t)
-        if r:
-            results.append(r)
+for t in TICKERS:
+    data = analizar_ticker(t)
+    if data:
+        resultados.append(data)
 
-df_screen = pd.DataFrame(results)
+df_screen = pd.DataFrame(resultados)
+
+if df_screen.empty:
+    st.error("No se pudieron analizar los activos.")
+    st.stop()
 
 # -----------------------------------------------------
-# FILTRADO Y ORDENAMIENTO
+# FILTRAR Y ORDENAR
 # -----------------------------------------------------
-if not df_screen.empty:
-    # Solo los que cumplen condición de tendencia
-    df_screen = df_screen[df_screen["Tendencia OK"]]
+df_screen = df_screen[df_screen["Tendencia OK"] == True]
 
-    # Ordenar por proximidad al entry
-    df_screen = df_screen.sort_values("Distancia al Entry")
+df_screen = df_screen.sort_values(
+    by="Distancia al Entry",
+    ascending=True
+).reset_index(drop=True)
 
-    st.dataframe(df_screen, use_container_width=True)
+df_screen.insert(0, "Ranking", df_screen.index + 1)
 
-    st.caption("Menor distancia ⇒ más cerca de generar signal de entry")
+# -----------------------------------------------------
+# ALERTAS
+# -----------------------------------------------------
+df_screen["Cercania_%"] = (
+    df_screen["Distancia al Entry"] / df_screen["Umbral"]
+) * 100
 
+def semaforo(x):
+    if x < 5:
+        return "🔴 CRÍTICO"
+    elif x < 10:
+        return "🟡 ATENCIÓN"
+    else:
+        return "🟢 LEJOS"
+
+df_screen["Estado"] = df_screen["Cercania_%"].apply(semaforo)
+
+criticos = df_screen[df_screen["Cercania_%"] < 5]
+
+if not criticos.empty:
+    st.error("🚨 ACTIVOS MUY PRÓXIMOS AL ENTRY 🚨")
+    for _, row in criticos.iterrows():
+        st.markdown(
+            f"""
+            **{row['Ticker']}**
+            - Distancia: `{row['Distancia al Entry']:.4f}`
+            - Cercanía: `{row['Cercania_%']:.2f}%`
+            """
+        )
 else:
-    st.warning("No se encontraron activos próximos al entry.")
+    st.success("✅ No hay activos en zona crítica")
+
+# -----------------------------------------------------
+# TABLA FINAL
+# -----------------------------------------------------
+st.subheader("📋 Ranking de proximidad al Entry")
+
+st.dataframe(
+    df_screen[[
+        "Ranking",
+        "Ticker",
+        "Precio actual",
+        "|x| actual",
+        "Umbral",
+        "Distancia al Entry",
+        "Cercania_%",
+        "Estado"
+    ]],
+    use_container_width=True
+)
+
+st.caption("Ranking 1 = activo MÁS cercano a generar señal de entry")
