@@ -15,7 +15,6 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # -----------------------------------------------------
 # CONFIGURACIÓN
@@ -35,7 +34,6 @@ st.caption("Screener de proximidad al signal de entry")
 # -----------------------------------------------------
 # PARÁMETROS
 # -----------------------------------------------------
-k = 0.001
 window_ma = 10
 elasticidad = 1.5
 
@@ -43,39 +41,59 @@ elasticidad = 1.5
 # FUNCIÓN PRINCIPAL
 # -----------------------------------------------------
 def analizar_ticker(ticker):
-    df = yf.download(ticker, period="2y", interval="1d", progress=False)
-
-    if df.empty or len(df) < window_ma + 5:
+    try:
+        df = yf.download(
+            ticker,
+            period="2y",
+            interval="1d",
+            progress=False,
+            auto_adjust=True
+        )
+    except Exception:
         return None
 
+    if df is None or df.empty or len(df) < window_ma + 5:
+        return None
+
+    # FIX CRÍTICO: columnas MultiIndex
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    if "Close" not in df.columns:
+        return None
+
+    # Medias móviles
     df["MA5"] = df["Close"].rolling(5).mean()
     df["MA10"] = df["Close"].rolling(window_ma).mean()
     df.dropna(inplace=True)
 
-    # Señales
-    df["Signal"] = np.where(df["MA5"] > df["MA10"], 1, 0)
+    if df.empty:
+        return None
 
-    # Hooke
+    # Modelo de Hooke
     df["x"] = df["Close"] - df["MA10"]
     threshold = df["x"].std() * elasticidad
+
+    if threshold <= 0 or np.isnan(threshold):
+        return None
 
     x_actual = abs(df["x"].iloc[-1])
     distancia_entry = abs(threshold - x_actual)
 
-    # Tendencia válida (pre–entry)
+    # Condición de pre-entry (tendencia bajista previa)
     tendencia_ok = df["MA5"].iloc[-1] < df["MA10"].iloc[-1]
 
     return {
         "Ticker": ticker,
-        "Precio actual": df["Close"].iloc[-1],
-        "|x| actual": x_actual,
-        "Umbral": threshold,
-        "Distancia al Entry": distancia_entry,
+        "Precio actual": float(df["Close"].iloc[-1]),
+        "|x| actual": float(x_actual),
+        "Umbral": float(threshold),
+        "Distancia al Entry": float(distancia_entry),
         "Tendencia OK": tendencia_ok
     }
 
 # -----------------------------------------------------
-# PROCESAR TODOS LOS TICKERS
+# PROCESAMIENTO
 # -----------------------------------------------------
 st.info("🔄 Analizando activos...")
 
@@ -83,19 +101,24 @@ resultados = []
 
 for t in TICKERS:
     data = analizar_ticker(t)
-    if data:
+    if data is not None:
         resultados.append(data)
 
 df_screen = pd.DataFrame(resultados)
 
 if df_screen.empty:
-    st.error("No se pudieron analizar los activos.")
+    st.error("❌ No se pudieron analizar los activos.")
     st.stop()
 
 # -----------------------------------------------------
 # FILTRAR Y ORDENAR
 # -----------------------------------------------------
 df_screen = df_screen[df_screen["Tendencia OK"] == True]
+df_screen = df_screen[df_screen["Umbral"] > 0]
+
+if df_screen.empty:
+    st.warning("⚠️ No hay activos en condición de pre-entry.")
+    st.stop()
 
 df_screen = df_screen.sort_values(
     by="Distancia al Entry",
@@ -129,7 +152,7 @@ if not criticos.empty:
         st.markdown(
             f"""
             **{row['Ticker']}**
-            - Distancia: `{row['Distancia al Entry']:.4f}`
+            - Distancia al entry: `{row['Distancia al Entry']:.4f}`
             - Cercanía: `{row['Cercania_%']:.2f}%`
             """
         )
