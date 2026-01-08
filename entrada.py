@@ -178,4 +178,18 @@ st.dataframe(
     use_container_width=True
 )
 
+
+
+# Personalización de diseño
+st.markdown("""
+<style>
+    .stApp {
+        background-color:  #00FF00;
+    }
+    .css-1d391kg {
+        color:  #faf7f8;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 st.caption("Ranking 1 = activo MÁS cercano a generar señal de entry")
