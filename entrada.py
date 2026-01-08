@@ -168,7 +168,7 @@ st.subheader("Ranking de proximidad al Entry")
 st.dataframe(
     df_screen[[
         "Ranking",
-        "Estado"
+        "Estado",
         "Ticker",
         "Precio actual",
         "|x| actual",
