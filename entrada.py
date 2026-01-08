@@ -8,19 +8,18 @@ Original file is located at
 """
 
 # =====================================================
-# MODELO HOOKE – SCREENER DE ENTRADAS (STREAMLIT)
+# HOOKE MODEL – SCREENER DE ENTRY PRÓXIMO (STREAMLIT)
 # =====================================================
 
 import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 # -----------------------------------------------------
 # CONFIGURACIÓN
 # -----------------------------------------------------
-st.set_page_config(page_title="Hooke Trading Screener", layout="wide")
+st.set_page_config(page_title="Hooke Entry Proximity Screener", layout="wide")
 
 TICKERS = [
     "BTC-USD", "GAPB.MX", "PLTR", "SPY", "GRUMAB.MX",
@@ -29,13 +28,13 @@ TICKERS = [
     "QUBT", "FRES.MX", "JPM", "MCHI", "INDA"
 ]
 
-st.title("📊 Modelo del Resorte de Hooke – Screener de Entradas")
+st.title("🔮 Acciones Próximas al Signal de Entry (Modelo Hooke)")
 
 # -----------------------------------------------------
-# FUNCIÓN PRINCIPAL
+# FUNCIÓN DE ANÁLISIS
 # -----------------------------------------------------
 @st.cache_data(show_spinner=False)
-def analyze_ticker(ticker):
+def entry_proximity(ticker):
     try:
         df = yf.download(ticker, period="2y", interval="1d", progress=False)
         if df.empty:
@@ -46,33 +45,23 @@ def analyze_ticker(ticker):
         df["MA10"] = df["Close"].rolling(10).mean()
         df.dropna(inplace=True)
 
-        # Señales
-        df["Signal"] = np.where(df["MA5"] > df["MA10"], 1, 0)
-        df["Crossover"] = df["Signal"].diff()
+        # Condición de tendencia
+        trend_ok = df["MA5"].iloc[-1] < df["MA10"].iloc[-1]
 
         # Modelo Hooke
         df["x"] = df["Close"] - df["MA10"]
         threshold = df["x"].std() * 1.5
-        df["Exit"] = np.where(abs(df["x"]) > threshold, 1, 0)
-        df["Exit_diff"] = df["Exit"].diff()
 
-        # Entry dates
-        entry_dates = df[
-            (df["Exit_diff"] == -1) & (df["MA5"] < df["MA10"])
-        ].index
-
-        if len(entry_dates) == 0:
-            return None
-
-        last_entry = entry_dates[-1]
-        days_from_entry = (pd.Timestamp.today().normalize() - last_entry).days
+        x_last = df["x"].iloc[-1]
+        dist_to_entry = abs(abs(x_last) - threshold)
 
         return {
             "Ticker": ticker,
-            "Último Entry": last_entry.date(),
-            "Días desde Entry": days_from_entry,
-            "Precio Actual": round(df["Close"].iloc[-1], 2),
-            "Desviación Hooke": round(df["x"].iloc[-1], 4)
+            "Precio actual": round(df["Close"].iloc[-1], 2),
+            "|x| actual": round(abs(x_last), 4),
+            "Umbral": round(threshold, 4),
+            "Distancia al Entry": round(dist_to_entry, 4),
+            "Tendencia OK": trend_ok
         }
 
     except Exception:
@@ -81,52 +70,31 @@ def analyze_ticker(ticker):
 # -----------------------------------------------------
 # EJECUCIÓN DEL SCREENER
 # -----------------------------------------------------
-st.subheader("🔍 Activos ordenados por cercanía al Entry")
+st.subheader("📊 Ranking de proximidad al Entry")
 
 results = []
 
-with st.spinner("Analizando activos..."):
+with st.spinner("Evaluando activos..."):
     for t in TICKERS:
-        r = analyze_ticker(t)
+        r = entry_proximity(t)
         if r:
             results.append(r)
 
-df_entries = pd.DataFrame(results)
+df_screen = pd.DataFrame(results)
 
 # -----------------------------------------------------
-# RESULTADOS
+# FILTRADO Y ORDENAMIENTO
 # -----------------------------------------------------
-if not df_entries.empty:
-    df_entries = df_entries.sort_values("Días desde Entry")
-    st.dataframe(df_entries, use_container_width=True)
+if not df_screen.empty:
+    # Solo los que cumplen condición de tendencia
+    df_screen = df_screen[df_screen["Tendencia OK"]]
 
-    st.caption("Menor número de días = señal más reciente")
+    # Ordenar por proximidad al entry
+    df_screen = df_screen.sort_values("Distancia al Entry")
+
+    st.dataframe(df_screen, use_container_width=True)
+
+    st.caption("Menor distancia ⇒ más cerca de generar signal de entry")
+
 else:
-    st.warning("No se detectaron señales de entrada.")
-
-# -----------------------------------------------------
-# SELECCIÓN PARA ANÁLISIS DETALLADO
-# -----------------------------------------------------
-st.subheader("📈 Análisis individual")
-
-if not df_entries.empty:
-    selected = st.selectbox("Selecciona un activo:", df_entries["Ticker"])
-
-    df = yf.download(selected, period="2y", interval="1d", progress=False)
-    df["MA10"] = df["Close"].rolling(10).mean()
-    df.dropna(inplace=True)
-
-    fig, ax = plt.subplots(figsize=(14, 6))
-    ax.plot(df["Close"], label="Precio", color="black")
-    ax.plot(df["MA10"], label="MA10", color="orange")
-    ax.scatter(
-        df.index[-1],
-        df["Close"].iloc[-1],
-        color="red",
-        label="Último precio",
-        zorder=5
-    )
-
-    ax.legend()
-    ax.set_title(f"{selected} – Precio y equilibrio")
-    st.pyplot(fig)
+    st.warning("No se encontraron activos próximos al entry.")
