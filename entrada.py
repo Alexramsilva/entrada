@@ -28,7 +28,8 @@ TICKERS = [
     "QUBT", "FRES.MX", "JPM", "MCHI", "INDA"
 ]
 
-st.title("📈 Modelo del Resorte de Hooke aplicado al Trading")
+st.image("shop.png", width=300)
+st.title("Entry Radar: Closest Trade Setups")
 st.caption("Screener de proximidad al signal de entry")
 
 # -----------------------------------------------------
@@ -162,7 +163,7 @@ else:
 # -----------------------------------------------------
 # TABLA FINAL
 # -----------------------------------------------------
-st.subheader("📋 Ranking de proximidad al Entry")
+st.subheader("Ranking de proximidad al Entry")
 
 st.dataframe(
     df_screen[[
@@ -184,10 +185,10 @@ st.dataframe(
 st.markdown("""
 <style>
     .stApp {
-        background-color:  #00FF00;
+        background-color:  #5BF58E;
     }
     .css-1d391kg {
-        color:  #faf7f8;
+        color:  #000000;
     }
 </style>
 """, unsafe_allow_html=True)
