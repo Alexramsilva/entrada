@@ -25,7 +25,7 @@ TICKERS = [
     "BTC-USD", "GAPB.MX", "PLTR", "SPY", "GRUMAB.MX",
     "FMTY14.MX", "IAU", "HOOD", "SOFI", "NVDA",
     "WALMEX.MX", "FUNO11.MX", "CHDRAUIB.MX",
-    "QUBT", "FRES.MX", "JPM", "MCHI", "INDA", "GMEXICOB.MX", "TSM", "AMD", "GOOGL",
+    "QUBT", "FRES.MX", "JPM", "MCHI", "INDA", "GMEXICOB.MX", "TSM", "AMD", "GOOGL", "IBM", "AMZN", "AVGO", "V"
 ]
 
 st.image("shop.png", width=300)
